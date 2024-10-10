@@ -1,13 +1,11 @@
 use std::{
-    fmt,
-    hash::{Hash, Hasher},
-    pin::Pin,
+    fmt, hash::{Hash, Hasher}, pin::Pin
 };
 
 use allocator_api2::boxed;
 use gc_arena::{allocator_api::MetricsAlloc, Collect, Gc, Mutation};
 
-use crate::{Context, Error, Execution, Function, Stack, Thread};
+use crate::{lua::Writer, Context, Error, Execution, Function, Stack, Thread};
 
 /// Describes the next action for an [`Executor`](crate::Executor) to take after a callback has
 /// returned.
@@ -76,6 +74,7 @@ pub trait CallbackFn<'gc>: Collect {
         ctx: Context<'gc>,
         exec: Execution<'gc, '_>,
         stack: Stack<'gc, '_>,
+        writer: Writer,
     ) -> Result<CallbackReturn<'gc>, Error<'gc>>;
 }
 
@@ -91,6 +90,7 @@ pub struct CallbackInner<'gc> {
         Context<'gc>,
         Execution<'gc, '_>,
         Stack<'gc, '_>,
+        Writer
     ) -> Result<CallbackReturn<'gc>, Error<'gc>>,
 }
 
@@ -121,9 +121,9 @@ impl<'gc> Callback<'gc> {
             mc,
             HeaderCallback {
                 header: CallbackInner {
-                    call: |ptr, ctx, exec, stack| unsafe {
+                    call: |ptr, ctx, exec, stack, writer| unsafe {
                         let hc = ptr as *const HeaderCallback<C>;
-                        ((*hc).callback).call(ctx, exec, stack)
+                        ((*hc).callback).call(ctx, exec, stack, writer)
                     },
                 },
                 callback,
@@ -144,9 +144,10 @@ impl<'gc> Callback<'gc> {
                 Context<'gc>,
                 Execution<'gc, '_>,
                 Stack<'gc, '_>,
+                Writer,
             ) -> Result<CallbackReturn<'gc>, Error<'gc>>,
     {
-        Self::from_fn_with(mc, (), move |_, ctx, exec, stack| call(ctx, exec, stack))
+        Self::from_fn_with(mc, (), move |_, ctx, exec, stack, writer| call(ctx, exec, stack, writer))
     }
 
     /// Create a callback from a Rust function together with a GC object.
@@ -159,6 +160,7 @@ impl<'gc> Callback<'gc> {
                 Context<'gc>,
                 Execution<'gc, '_>,
                 Stack<'gc, '_>,
+                Writer
             ) -> Result<CallbackReturn<'gc>, Error<'gc>>,
     {
         #[derive(Collect)]
@@ -178,6 +180,7 @@ impl<'gc> Callback<'gc> {
                     Context<'gc>,
                     Execution<'gc, '_>,
                     Stack<'gc, '_>,
+                    Writer
                 ) -> Result<CallbackReturn<'gc>, Error<'gc>>,
         {
             fn call(
@@ -185,8 +188,9 @@ impl<'gc> Callback<'gc> {
                 ctx: Context<'gc>,
                 exec: Execution<'gc, '_>,
                 stack: Stack<'gc, '_>,
+                writer: Writer,
             ) -> Result<CallbackReturn<'gc>, Error<'gc>> {
-                (self.call)(&self.root, ctx, exec, stack)
+                (self.call)(&self.root, ctx, exec, stack, writer)
             }
         }
 
@@ -206,8 +210,9 @@ impl<'gc> Callback<'gc> {
         ctx: Context<'gc>,
         exec: Execution<'gc, '_>,
         stack: Stack<'gc, '_>,
+        writer: Writer,
     ) -> Result<CallbackReturn<'gc>, Error<'gc>> {
-        unsafe { (self.0.call)(Gc::as_ptr(self.0), ctx, exec, stack) }
+        unsafe { (self.0.call)(Gc::as_ptr(self.0), ctx, exec, stack, writer) }
     }
 }
 
@@ -295,6 +300,7 @@ pub trait Sequence<'gc>: Collect {
         ctx: Context<'gc>,
         exec: Execution<'gc, '_>,
         stack: Stack<'gc, '_>,
+        writer: Writer,
     ) -> Result<SequencePoll<'gc>, Error<'gc>>;
 
     /// Called if triggered action has errored, allowing the `Sequence` to potentially handle the
@@ -350,8 +356,9 @@ impl<'gc> BoxSequence<'gc> {
         ctx: Context<'gc>,
         exec: Execution<'gc, '_>,
         stack: Stack<'gc, '_>,
+        writer: Writer,
     ) -> Result<SequencePoll<'gc>, Error<'gc>> {
-        self.0.as_mut().poll(ctx, exec, stack)
+        self.0.as_mut().poll(ctx, exec, stack, writer)
     }
 
     pub fn error(

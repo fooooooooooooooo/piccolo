@@ -6,7 +6,7 @@ pub fn load_string<'gc>(ctx: Context<'gc>) {
     string.set_field(
         ctx,
         "len",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let string = stack.consume::<String>(ctx)?;
             let len = string.len();
             stack.replace(ctx, len);
@@ -17,7 +17,7 @@ pub fn load_string<'gc>(ctx: Context<'gc>) {
     string.set_field(
         ctx,
         "sub",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             fn operate_sub(
                 string: &[u8],
                 i: i64,
@@ -57,7 +57,7 @@ pub fn load_string<'gc>(ctx: Context<'gc>) {
     string.set_field(
         ctx,
         "lower",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let string = stack.consume::<String>(ctx)?;
             let lowered = ctx.intern(
                 &string
@@ -74,7 +74,7 @@ pub fn load_string<'gc>(ctx: Context<'gc>) {
     string.set_field(
         ctx,
         "reverse",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let string = stack.consume::<String>(ctx)?;
             let reversed = ctx.intern(&string.as_bytes().iter().copied().rev().collect::<Vec<_>>());
             stack.replace(ctx, reversed);
@@ -85,7 +85,7 @@ pub fn load_string<'gc>(ctx: Context<'gc>) {
     string.set_field(
         ctx,
         "upper",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let string = stack.consume::<String>(ctx)?;
             let uppered = ctx.intern(
                 &string

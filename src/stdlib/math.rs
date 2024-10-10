@@ -15,7 +15,7 @@ pub fn load_math<'gc>(ctx: Context<'gc>) {
         A: FromMultiValue<'gc>,
         R: IntoMultiValue<'gc>,
     {
-        Callback::from_fn(mc, move |ctx, _, mut stack| {
+        Callback::from_fn(mc, move |ctx, _, mut stack, _| {
             if let Some(res) = f(ctx, stack.consume(ctx)?) {
                 stack.replace(ctx, res);
                 Ok(CallbackReturn::Return)
@@ -121,7 +121,7 @@ pub fn load_math<'gc>(ctx: Context<'gc>) {
     math.set_field(
         ctx,
         "max",
-        Callback::from_fn(&ctx, |ctx, _, stack| {
+        Callback::from_fn(&ctx, |ctx, _, stack, _| {
             if stack.is_empty() {
                 return Err("value expected".into_value(ctx).into());
             }
@@ -170,7 +170,7 @@ pub fn load_math<'gc>(ctx: Context<'gc>) {
     math.set_field(
         ctx,
         "min",
-        Callback::from_fn(&ctx, |ctx, _, stack| {
+        Callback::from_fn(&ctx, |ctx, _, stack, _| {
             if stack.is_empty() {
                 return Err("value expected".into_value(ctx).into());
             }

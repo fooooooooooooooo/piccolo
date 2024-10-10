@@ -4,6 +4,7 @@ use std::pin::Pin;
 use anyhow::Context as _;
 use gc_arena::Collect;
 
+use crate::lua::Writer;
 use crate::{
     async_callback::{AsyncSequence, Locals},
     async_sequence,
@@ -21,7 +22,7 @@ pub fn load_table<'gc>(ctx: Context<'gc>) {
     table.set_field(
         ctx,
         "pack",
-        Callback::from_fn(&ctx, |ctx, _, stack| {
+        Callback::from_fn(&ctx, |ctx, _, stack, _| {
             Ok(CallbackReturn::Sequence(BoxSequence::new(
                 &ctx,
                 Pack::SetLength {
@@ -32,7 +33,7 @@ pub fn load_table<'gc>(ctx: Context<'gc>) {
         }),
     );
 
-    let unpack: Function<'gc> = Callback::from_fn(&ctx, |ctx, _, mut stack| {
+    let unpack: Function<'gc> = Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
         let (table, start_arg, end_arg): (Value<'gc>, Option<i64>, Option<i64>) =
             stack.consume(ctx)?;
 
@@ -65,10 +66,10 @@ pub fn load_table<'gc>(ctx: Context<'gc>) {
     table.set_field(
         ctx,
         "concat",
-        Callback::from_fn_with(&ctx, unpack, move |unpack, ctx, _exec, mut stack| {
+        Callback::from_fn_with(&ctx, unpack, move |unpack, ctx, _exec, mut stack, _| {
             let sep = stack.remove(1).unwrap_or_default();
 
-            let then_impl = Callback::from_fn_with(&ctx, sep, |sep, ctx, _, mut stack| {
+            let then_impl = Callback::from_fn_with(&ctx, sep, |sep, ctx, _, mut stack, _| {
                 let values = &stack[..];
                 match concat_separated(ctx, values, *sep)? {
                     ConcatMetaResult::Value(v) => {
@@ -92,6 +93,7 @@ pub fn load_table<'gc>(ctx: Context<'gc>) {
                     _ctx: Context<'gc>,
                     _exec: Execution<'gc, '_>,
                     _stack: Stack<'gc, '_>,
+                    _writer: Writer,
                 ) -> Result<SequencePoll<'gc>, Error<'gc>> {
                     Ok(SequencePoll::TailCall(self.0))
                 }
@@ -194,6 +196,7 @@ fn table_remove_impl<'gc>(
     ctx: Context<'gc>,
     mut exec: Execution<'gc, '_>,
     mut stack: Stack<'gc, '_>,
+    _: Writer,
 ) -> Result<CallbackReturn<'gc>, Error<'gc>> {
     let (table, index): (Table, Option<i64>) = stack.consume(ctx)?;
     let length;
@@ -307,6 +310,7 @@ fn table_insert_impl<'gc>(
     ctx: Context<'gc>,
     mut exec: Execution<'gc, '_>,
     mut stack: Stack<'gc, '_>,
+    _: Writer,
 ) -> Result<CallbackReturn<'gc>, Error<'gc>> {
     let table: Table;
     let index: Option<i64>;
@@ -453,6 +457,7 @@ impl<'gc> Sequence<'gc> for Pack<'gc> {
         ctx: Context<'gc>,
         mut exec: Execution<'gc, '_>,
         mut stack: Stack<'gc, '_>,
+        _writer: Writer,
     ) -> Result<SequencePoll<'gc>, Error<'gc>> {
         if let Pack::SetLength { table, length } = *self {
             *self = Pack::MainLoop {
@@ -568,6 +573,7 @@ impl<'gc> Sequence<'gc> for Unpack<'gc> {
         ctx: Context<'gc>,
         mut exec: Execution<'gc, '_>,
         mut stack: Stack<'gc, '_>,
+        _writer: Writer,
     ) -> Result<SequencePoll<'gc>, Error<'gc>> {
         if let Unpack::FindLength { start, table } = *self {
             *self = Unpack::LengthFound { start, table };

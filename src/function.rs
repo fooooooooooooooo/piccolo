@@ -3,8 +3,7 @@ use std::pin::Pin;
 use gc_arena::{Collect, Gc, Mutation};
 
 use crate::{
-    BoxSequence, Callback, CallbackReturn, Closure, Context, Error, Execution, IntoMultiValue,
-    Sequence, SequencePoll, Stack,
+    lua::Writer, BoxSequence, Callback, CallbackReturn, Closure, Context, Error, Execution, IntoMultiValue, Sequence, SequencePoll, Stack
 };
 
 /// Any callable Lua value (either a [`Closure`] or a [`Callback`]).
@@ -51,6 +50,7 @@ impl<'gc> Function<'gc> {
                 _: Context<'gc>,
                 _: Execution<'gc, '_>,
                 _: Stack<'gc, '_>,
+                _: Writer,
             ) -> Result<SequencePoll<'gc>, Error<'gc>> {
                 let this = self.get_mut();
                 let fns = (*this.0).as_ref();
@@ -70,7 +70,7 @@ impl<'gc> Function<'gc> {
         Self::Callback(Callback::from_fn_with(
             mc,
             Gc::new(mc, functions),
-            |functions, ctx, _, _| {
+            |functions, ctx, _, _, _| {
                 if (**functions).as_ref().is_empty() {
                     Ok(CallbackReturn::Return)
                 } else {
@@ -94,14 +94,14 @@ impl<'gc> Function<'gc> {
         Self::Callback(Callback::from_fn_with(
             mc,
             (self, args),
-            |(f, args), ctx, exec, mut stack| {
+            |(f, args), ctx, exec, mut stack, writer| {
                 stack.into_front(ctx, args.clone());
                 match *f {
                     Function::Closure(c) => Ok(CallbackReturn::Call {
                         function: c.into(),
                         then: None,
                     }),
-                    Function::Callback(c) => c.call(ctx, exec, stack),
+                    Function::Callback(c) => c.call(ctx, exec, stack, writer),
                 }
             },
         ))

@@ -3,16 +3,13 @@ use std::pin::Pin;
 use gc_arena::Collect;
 
 use crate::{
-    meta_ops::{self, MetaResult},
-    table::NextValue,
-    BoxSequence, Callback, CallbackReturn, Context, Error, Execution, IntoValue, MetaMethod,
-    Sequence, SequencePoll, Stack, String, Table, TypeError, Value, Variadic,
+    lua::Writer, meta_ops::{self, MetaResult}, table::NextValue, BoxSequence, Callback, CallbackReturn, Context, Error, Execution, IntoValue, MetaMethod, Sequence, SequencePoll, Stack, String, Table, TypeError, Value, Variadic
 };
 
 pub fn load_base<'gc>(ctx: Context<'gc>) {
     ctx.set_global(
         "tonumber",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             use crate::compiler::string_utils::{read_neg, trim_whitespace};
 
             fn extract_number_data(bytes: &[u8]) -> (&[u8], bool) {
@@ -70,7 +67,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "tostring",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             if stack.is_empty() {
                 Err("Bad argument to tostring".into_value(ctx).into())
             } else {
@@ -94,12 +91,12 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "error",
-        Callback::from_fn(&ctx, |_, _, stack| Err(stack.get(0).into())),
+        Callback::from_fn(&ctx, |_, _, stack, _| Err(stack.get(0).into())),
     );
 
     ctx.set_global(
         "assert",
-        Callback::from_fn(&ctx, |ctx, _, stack| {
+        Callback::from_fn(&ctx, |ctx, _, stack, _| {
             if stack.get(0).to_bool() {
                 Ok(CallbackReturn::Return)
             } else if stack.get(1).is_nil() {
@@ -112,7 +109,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "pcall",
-        Callback::from_fn(&ctx, move |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, move |ctx, _, mut stack, _| {
             let function = meta_ops::call(ctx, stack.get(0))?;
             stack.pop_front();
             Ok(CallbackReturn::Call {
@@ -124,7 +121,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "type",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             if stack.is_empty() {
                 Err("Missing argument to type".into_value(ctx).into())
             } else {
@@ -136,7 +133,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "select",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let ind = stack.get(0);
             if let Some(n) = ind.to_integer() {
                 if n >= 1 {
@@ -164,7 +161,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "rawget",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let (table, key): (Table, Value) = stack.consume(ctx)?;
             stack.replace(ctx, table.get_value(ctx, key));
             Ok(CallbackReturn::Return)
@@ -173,7 +170,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "rawlen",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let table: Table = stack.consume(ctx)?;
             stack.replace(ctx, table.length());
             Ok(CallbackReturn::Return)
@@ -182,7 +179,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "rawset",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let (table, key, value): (Table, Value, Value) = stack.consume(ctx)?;
             table.set(ctx, key, value)?;
             stack.replace(ctx, table);
@@ -192,7 +189,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "getmetatable",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             if let Value::Table(t) = stack.get(0) {
                 stack.replace(ctx, t.metatable());
                 Ok(CallbackReturn::Return)
@@ -206,7 +203,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "setmetatable",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             let (t, mt): (Table, Option<Table>) = stack.consume(ctx)?;
             t.set_metatable(&ctx, mt);
             stack.replace(ctx, t);
@@ -226,7 +223,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
         }
     }
 
-    let next = Callback::from_fn(&ctx, |ctx, _, mut stack| {
+    let next = Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
         let (table, index): (Table, Value) = stack.consume(ctx)?;
         stack.replace(ctx, next(ctx, table, index)?);
         Ok(CallbackReturn::Return)
@@ -236,7 +233,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "pairs",
-        Callback::from_fn_with(&ctx, next, move |next, ctx, _, mut stack| {
+        Callback::from_fn_with(&ctx, next, move |next, ctx, _, mut stack, _| {
             let table = stack.get(0);
             if let Some(mt) = match table {
                 Value::Table(t) => t.metatable(),
@@ -259,7 +256,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
         }),
     );
 
-    let inext = Callback::from_fn(&ctx, |ctx, _, mut stack| {
+    let inext = Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
         let (table, index): (Value, Option<i64>) = stack.consume(ctx)?;
         let next_index = index.unwrap_or(0).wrapping_add(1);
         Ok(match meta_ops::index(ctx, table, next_index.into())? {
@@ -280,6 +277,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
                         _ctx: Context<'gc>,
                         _exec: Execution<'gc, '_>,
                         mut stack: Stack<'gc, '_>,
+                        _: Writer,
                     ) -> Result<SequencePoll<'gc>, Error<'gc>> {
                         if !stack.get(0).is_nil() {
                             stack.push_front(self.0.into());
@@ -299,7 +297,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "ipairs",
-        Callback::from_fn_with(&ctx, inext, move |inext, ctx, _, mut stack| {
+        Callback::from_fn_with(&ctx, inext, move |inext, ctx, _, mut stack, _| {
             stack.into_front(ctx, *inext);
             Ok(CallbackReturn::Return)
         }),
@@ -307,7 +305,7 @@ pub fn load_base<'gc>(ctx: Context<'gc>) {
 
     ctx.set_global(
         "collectgarbage",
-        Callback::from_fn(&ctx, move |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, move |ctx, _, mut stack, _| {
             match stack.consume::<Option<String>>(ctx)? {
                 Some(arg) if arg == "count" => {
                     stack.into_back(ctx, ctx.metrics().total_allocation() as f64 / 1024.0);
@@ -334,6 +332,7 @@ impl<'gc> Sequence<'gc> for PCall {
         ctx: Context<'gc>,
         _exec: Execution<'gc, '_>,
         mut stack: Stack<'gc, '_>,
+        _: Writer,
     ) -> Result<SequencePoll<'gc>, Error<'gc>> {
         stack.into_front(ctx, true);
         Ok(SequencePoll::Return)

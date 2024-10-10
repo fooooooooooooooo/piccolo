@@ -1,20 +1,15 @@
-use std::{
-    io::{self, Write},
-    pin::Pin,
-};
+use std::pin::Pin;
 
 use gc_arena::Collect;
 
 use crate::{
-    meta_ops::{self, MetaResult},
-    BoxSequence, Callback, CallbackReturn, Context, Error, Execution, Sequence, SequencePoll,
-    Stack, Value,
+    lua::Writer, meta_ops::{self, MetaResult}, BoxSequence, Callback, CallbackReturn, Context, Error, Execution, Sequence, SequencePoll, Stack, Value
 };
 
 pub fn load_io<'gc>(ctx: Context<'gc>) {
     ctx.set_global(
         "print",
-        Callback::from_fn(&ctx, |ctx, _, mut stack| {
+        Callback::from_fn(&ctx, |ctx, _, mut stack, _| {
             #[derive(Collect)]
             #[collect(require_static)]
             struct PrintSeq {
@@ -27,21 +22,22 @@ pub fn load_io<'gc>(ctx: Context<'gc>) {
                     ctx: Context<'gc>,
                     _exec: Execution<'gc, '_>,
                     mut stack: Stack<'gc, '_>,
+                    writer: Writer,
                 ) -> Result<SequencePoll<'gc>, Error<'gc>> {
-                    let mut stdout = io::stdout();
-
+                    let mut writer = writer.lock().unwrap();
+                    let writer = writer.as_mut();
                     while let Some(value) = stack.pop_back() {
                         match meta_ops::tostring(ctx, value)? {
                             MetaResult::Value(v) => {
                                 if self.first {
                                     self.first = false;
                                 } else {
-                                    stdout.write_all(b"\t")?;
+                                    writer.write_all(b"\t")?;
                                 }
                                 if let Value::String(s) = v {
-                                    stdout.write_all(s.as_bytes())?;
+                                    writer.write_all(s.as_bytes())?;
                                 } else {
-                                    write!(stdout, "{}", v.display())?;
+                                    write!(writer, "{}", v.display())?;
                                 }
                             }
                             MetaResult::Call(call) => {
@@ -55,8 +51,8 @@ pub fn load_io<'gc>(ctx: Context<'gc>) {
                         }
                     }
 
-                    stdout.write_all(b"\n")?;
-                    stdout.flush()?;
+                    writer.write_all(b"\n")?;
+                    writer.flush()?;
                     Ok(SequencePoll::Return)
                 }
             }

@@ -1,4 +1,4 @@
-use std::ops;
+use std::{io::Write, ops, rc::Rc, sync::Mutex};
 
 use gc_arena::{
     arena::{CollectionPhase, Root},
@@ -125,38 +125,36 @@ impl<'gc> ops::Deref for Context<'gc> {
     }
 }
 
+pub type Writer = Rc<Mutex<Box<dyn Write>>>;
+
 /// A Lua execution environment.
 ///
 /// This is the top-level `piccolo` type. In order to load and call any Lua code, the first step is
 /// to create a `Lua` instance.
 pub struct Lua {
     arena: Arena<Rootable![State<'_>]>,
-}
-
-impl Default for Lua {
-    fn default() -> Self {
-        Lua::core()
-    }
+    writer: Writer,
 }
 
 impl Lua {
     /// Create a new `Lua` instance with no parts of the stdlib loaded.
-    pub fn empty() -> Self {
+    pub fn empty(writer: Writer) -> Self {
         Lua {
             arena: Arena::<Rootable![State<'_>]>::new(|mc| State::new(mc)),
+            writer,
         }
     }
 
     /// Create a new `Lua` instance with the core stdlib loaded.
-    pub fn core() -> Self {
-        let mut lua = Self::empty();
+    pub fn core(writer: Writer) -> Self {
+        let mut lua = Self::empty(writer);
         lua.load_core();
         lua
     }
 
     /// Create a new `Lua` instance with all of the stdlib loaded.
-    pub fn full() -> Self {
-        let mut lua = Lua::core();
+    pub fn full(writer: Writer) -> Self {
+        let mut lua = Lua::core(writer);
         lua.load_io();
         lua
     }
@@ -270,7 +268,9 @@ impl Lua {
         loop {
             let mut fuel = Fuel::with(FUEL_PER_GC);
 
-            if self.enter(|ctx| ctx.fetch(executor).step(ctx, &mut fuel))? {
+            let writer = self.writer.clone();
+
+            if self.enter(|ctx| ctx.fetch(executor).step(ctx, &mut fuel, writer))? {
                 break;
             }
         }
